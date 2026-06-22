@@ -24,6 +24,15 @@ Thumbs.db
 fp.ps1
 lvl.py
 build.sh
+push_lvlang.ps1
+
+# Runtime files (in binary repo)
+test.lvls
+test_en.lvls
+grammar.json
+
+# Stale config
+config.toml
 
 # C# build artifacts
 **/obj/
