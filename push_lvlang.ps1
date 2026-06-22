@@ -1,38 +1,51 @@
 # push_lvlang.ps1
-# 推送 LVLANG 源代码和编译产物到 GitHub，失败时自动重试
-# 运行: .\push_lvlang.ps1
+# Push LVLANG source + binaries to GitHub with auto-retry on network failure.
+# Usage: .\push_lvlang.ps1
 
 $ErrorActionPreference = "Stop"
 $ROOT = "C:\Users\lvyg\Desktop\LVLANG"
 $TEMP_BIN_REPO = "$env:TEMP\lvlang-bin-repo"
-$MAX_RETRIES = 10
+
+# Retry config
+$MAX_RETRIES = 20
 $RETRY_INTERVAL_SEC = 120
 
-function Test-Connectivity {
-    param([string]$HostName = "github.com")
+# Git optimizations for unstable network
+git config --global http.version HTTP/1.1
+git config --global http.postBuffer 524288000
+git config --global http.lowSpeedLimit 1000
+git config --global http.lowSpeedTime 30
+git config --global core.compression 0
+
+function Test-GitHub {
     try {
-        $result = ping -n 1 $HostName 2>&1 | Select-String "TTL|时间"
-        return $null -ne $result
-    } catch { return $false }
+        $req = [System.Net.WebRequest]::Create("https://github.com")
+        $req.Timeout = 10000
+        $resp = $req.GetResponse()
+        $resp.Close()
+        return $true
+    } catch {
+        return $false
+    }
 }
 
 function Retry-Push {
     param([string]$Name, [scriptblock]$Body)
     for ($attempt = 1; $attempt -le $MAX_RETRIES; $attempt++) {
         Write-Host "[$Name] try #$attempt/$MAX_RETRIES..."
-        if (-not (Test-Connectivity)) {
-            Write-Host "[$Name] network down, retry in $RETRY_INTERVAL_SEC sec..."
+        if (-not (Test-GitHub)) {
+            Write-Host "[$Name] github unreachable, wait ${RETRY_INTERVAL_SEC}s..."
             Start-Sleep -Seconds $RETRY_INTERVAL_SEC
             continue
         }
         try {
             & $Body
-            Write-Host "[$Name] OK!" -ForegroundColor Green
+            Write-Host "[$Name] PUSH OK!" -ForegroundColor Green
             return $true
         } catch {
             Write-Host "[$Name] FAIL: $_" -ForegroundColor Red
             if ($attempt -lt $MAX_RETRIES) {
-                Write-Host "[$Name] retry in $RETRY_INTERVAL_SEC sec..."
+                Write-Host "[$Name] wait ${RETRY_INTERVAL_SEC}s then retry..."
                 Start-Sleep -Seconds $RETRY_INTERVAL_SEC
             } else {
                 Write-Host "[$Name] GIVEN UP after $MAX_RETRIES attempts." -ForegroundColor Red
@@ -42,46 +55,50 @@ function Retry-Push {
     }
 }
 
-# ============================
-# 1. push source code
-# ============================
-Write-Host "===== Push source to lvlangsrc =====" -ForegroundColor Magenta
+# ================================
+# 1. Source code -> lvlangsrc
+# ================================
+Write-Host "`n===== Push SOURCE -> lvlangsrc =====" -ForegroundColor Magenta
 
 Push-Location $ROOT
 try {
     Retry-Push "lvlangsrc" {
-        git commit --allow-empty -m "LVLANG Rust DLL rewrite - Go to Rust migration" 2>&1 | Out-Host
+        # Only commit if there are staged changes
+        $status = git status --porcelain 2>&1
+        if ($status) {
+            git commit -m "LVLANG source update" 2>&1 | Out-Host
+        }
         git push -u origin master 2>&1 | Out-Host
     }
 } finally { Pop-Location }
 
-# ============================
-# 2. push compiled binaries
-# ============================
-Write-Host "===== Push binaries to Lvoffice-Language =====" -ForegroundColor Magenta
+# ================================
+# 2. Binaries -> Lvoffice-Language
+# ================================
+Write-Host "`n===== Push BINARIES -> Lvoffice-Language =====" -ForegroundColor Magenta
 
+# Clean & setup temp repo
 if (Test-Path $TEMP_BIN_REPO) { Remove-Item -Recurse -Force $TEMP_BIN_REPO }
-New-Item -ItemType Directory -Path $TEMP_BIN_REPO -Force | Out-Null
+$null = New-Item -ItemType Directory -Path $TEMP_BIN_REPO -Force
 
+# Copy binaries
 $BIN_SRC = Join-Path $ROOT "bin"
 $LIBS_SRC = Join-Path $ROOT "libs"
 if (Test-Path $BIN_SRC) { Copy-Item -Recurse $BIN_SRC (Join-Path $TEMP_BIN_REPO "bin") }
 if (Test-Path $LIBS_SRC) { Copy-Item -Recurse $LIBS_SRC (Join-Path $TEMP_BIN_REPO "libs") }
 
-# write README piece by piece
-$readmeLines = @(
-    "# Lvoffice-Language pre-compiled binaries",
-    "",
-    "Source code: https://github.com/Lvoffice/lvlangsrc",
-    "",
-    "## Structure",
-    "",
-    "- bin/lvl.exe - main (parse + execute)",
-    "- bin/lvlp.exe - parse only",
-    "- libs/lvl_parser.dll - Rust parser DLL",
-    "- libs/lvl_interpreter.dll - Rust interpreter DLL"
-)
-$readmeLines | Set-Content -Path (Join-Path $TEMP_BIN_REPO "README.md") -Encoding UTF8
+# Write README
+$readme = @()
+$readme += "# Lvoffice-Language"
+$readme += ""
+$readme += "Pre-compiled LVLANG binaries."
+$readme += "Source code: https://github.com/Lvoffice/lvlangsrc"
+$readme += ""
+$readme += "- bin/lvl.exe"
+$readme += "- bin/lvlp.exe"
+$readme += "- libs/lvl_parser.dll"
+$readme += "- libs/lvl_interpreter.dll"
+$readme | Set-Content -Path (Join-Path $TEMP_BIN_REPO "README.md") -Encoding UTF8
 
 Push-Location $TEMP_BIN_REPO
 try {
@@ -91,7 +108,7 @@ try {
         git config user.email "lvyg@lvyg.com"
         git remote add origin https://github.com/Lvoffice/Lvoffice-Language.git
         git add -A 2>&1 | Out-Host
-        git commit -m "LVLANG Rust DLL release - compiled binaries" 2>&1 | Out-Host
+        git commit -m "LVLANG binaries release" 2>&1 | Out-Host
         git push -u origin master 2>&1 | Out-Host
     }
 } finally {
@@ -99,4 +116,4 @@ try {
     Remove-Item -Recurse -Force $TEMP_BIN_REPO -ErrorAction SilentlyContinue
 }
 
-Write-Host "===== ALL DONE =====" -ForegroundColor Green
+Write-Host "`n===== ALL DONE =====" -ForegroundColor Green
