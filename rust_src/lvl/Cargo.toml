@@ -1,0 +1,19 @@
+[package]
+name = "lvl"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lvl"
+
+[dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Console",
+] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true

@@ -1,0 +1,38 @@
+# Compiled outputs
+bin/
+libs/
+cache/
+target/
+output.bin
+output.txt
+
+# Go compiled
+*.exe
+*.dll
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Scripts
+fp.ps1
+lvl.py
+build.sh
+
+# C# build artifacts
+**/obj/
+**/bin/
+
+# Go diagnostic
+diagnose.go
+
+# Backup
+backup/
+cmd/
+scripts/

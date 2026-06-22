@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "cs_src/lvl",
+    "cs_src/lvlp",
+]
+resolver = "2"
