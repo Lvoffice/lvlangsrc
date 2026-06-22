@@ -29,7 +29,11 @@ build.sh
 **/obj/
 **/bin/
 
-# Go diagnostic
+# Deprecated (do not track)
+src/
+cs_src/
+go.mod
+go.sum
 diagnose.go
 
 # Backup
